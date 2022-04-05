@@ -15,20 +15,12 @@ using System.Collections.Generic;
 
 namespace databox_status
 {
-    public static class ProcessCompleted
+    public static class ProcessCompletedWithWarning
     {
-        /// <summary>
-        /// Handle all Completed events
-        /// </summary>
-        /// <param name="myQueueItem"></param>
-        /// <param name="log"></param>
-        /// <returns></returns>
-        [FunctionName("ProcessCompleted")]
-        public static async Task Run([ServiceBusTrigger("completed", Connection = "ServiceBusConnection")] string myQueueItem,
-         ILogger log)
+        [FunctionName("ProcessCompletedWithWarning")]
+        public static async Task Run([ServiceBusTrigger("completedwarnings", Connection = "ServiceBusConnection")] string myQueueItem, ILogger log)
         {
             var message = JsonConvert.DeserializeObject<DataBoxStatus>(myQueueItem);
-
             var subscriptionId = System.Environment.GetEnvironmentVariable("subscriptionid", EnvironmentVariableTarget.Process);
             var credential = new ManagedIdentityCredential();
 
@@ -40,14 +32,22 @@ namespace databox_status
 
                 // Trigger data ingest based on specific criteria.  For example:
                 // car id: Can be parsed from OrderName
-                // storage account: 
+                // storage account:                 
                 var databoxDiskJobDetails = (DataBoxDiskJobDetails)job.Details;
                 var dataImportDetail = databoxDiskJobDetails.DataImportDetails.First();
                 var storageAccountDetails = (StorageAccountDetails)dataImportDetail.AccountDetails;
                 string storageAccount = storageAccountDetails.StorageAccountId; // this gives the full resource id for the storage account where databox copies to
+                // error details
+                var copyLogDetails = (DataBoxDiskCopyLogDetails)databoxDiskJobDetails.CopyLogDetails;
+                var errorLogLocation = copyLogDetails.ErrorLogLink;
+                var verboseLogLink = copyLogDetails.VerboseLogLink;
+
+                // send error log location as part of a notification alert
+
             }
 
             log.LogInformation($"C# ServiceBus queue trigger function processed message: {myQueueItem}");
         }
     }
 }
+

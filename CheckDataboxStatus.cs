@@ -9,6 +9,9 @@ using System.Linq;
 using Microsoft.Azure.Management.DataBox.Models;
 using Newtonsoft.Json;
 using Azure.Messaging.ServiceBus;
+using Microsoft.Azure.Cosmos;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 
 namespace databox_status
@@ -16,35 +19,38 @@ namespace databox_status
     public class CheckDataboxStatus
     {
         /// <summary>
-        /// Runs every 2 hours as per cron expression
+        /// Runs every hour
         /// </summary>
         /// <param name="myTimer"></param>
         /// <param name="log"></param>
         [FunctionName("CheckDataboxStatus")]
-        public void Run([TimerTrigger("0 */2 * * * *")] TimerInfo myTimer, ILogger log)
+        public async Task Run([TimerTrigger("0 */1 * * * *")] TimerInfo myTimer, ILogger log)
         {
-            var subscriptionId = "";
-            var credential = new DefaultAzureCredential();
+            var subscriptionId = System.Environment.GetEnvironmentVariable("subscriptionid", EnvironmentVariableTarget.Process);
+            var credential = new ManagedIdentityCredential();
 
             var token = credential.GetToken(new Azure.Core.TokenRequestContext(new[] { "https://management.azure.com/.default" }));
             var accessToken = token.Token;
-            using (var client = new DataBoxManagementClient(new TokenCredentials(accessToken)))
+            using (var databoxClient = new DataBoxManagementClient(new TokenCredentials(accessToken)))
             {
-                client.SubscriptionId = subscriptionId;
-                var jobs = client.Jobs.List().ToList<JobResource>(); // Lists all the jobs in the subscription
-
+                databoxClient.SubscriptionId = subscriptionId;
+                var jobs = databoxClient.Jobs.List().ToList<JobResource>(); // Lists all the jobs in the subscription
 
                 foreach (var job in jobs)
                 {
                     // JobResource reference: https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.management.databox.models.jobresource?view=azure-dotnet
                     var jobName = job.Name;
-                    //var carDetails = ParseCarDetails(jobName);
-
+                    
                     // Log order details into a database if you wish to create a dashboard
-                    // Log latest order status into database
+                    // Check whether status is new
+                    var isUpdatedStatus = await IsStatusNew(job, log);
 
-                    // Handle current status
-                    HandleCurrentStatus(job);
+                    // No need to handle the status if this is a brand new order
+                    if (isUpdatedStatus)
+                    {
+                        HandleCurrentStatus(job, log);
+                    }
+
                     log.LogInformation(JsonConvert.SerializeObject(jobs).ToString());
                 }
             }
@@ -52,11 +58,61 @@ namespace databox_status
             log.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
         }
 
-        private void HandleCurrentStatus(JobResource job)
+        private async Task<bool> IsStatusNew(JobResource job, ILogger log)
         {
-            //TODO: Need to put a check in here as to whether this status has already been handled - need to check database to see if latest status matches this one
+            bool isNewStatus = false;
+            // get the current status for this order (if it exists)
 
+            var cosmosAccount = System.Environment.GetEnvironmentVariable("CosmosAccount", EnvironmentVariableTarget.Process);
+            var cosmosDatabase = System.Environment.GetEnvironmentVariable("CosmosDatabase", EnvironmentVariableTarget.Process);
+            var cosmosContainer = System.Environment.GetEnvironmentVariable("CosmosContainer", EnvironmentVariableTarget.Process);
 
+            var cosmosClient = new CosmosClient(cosmosAccount, new ManagedIdentityCredential());
+            var container = cosmosClient.GetContainer(cosmosDatabase, cosmosContainer);
+
+            var jobId = Utils.GetCosmosIdFromJobId(job.Id);
+
+            log.LogInformation("Job id (for cosmos) is: " + jobId);
+
+            var query = new QueryDefinition("SELECT * FROM status s where s.id = @id").WithParameter("@id", jobId);
+            var results = new List<OrderStatus>();
+            using (var resultsIterator = container.GetItemQueryIterator<OrderStatus>(query, requestOptions: new QueryRequestOptions() { PartitionKey = new PartitionKey(jobId) }))
+            {
+                while (resultsIterator.HasMoreResults)
+                {
+                    var response = await resultsIterator.ReadNextAsync();
+                    results.AddRange(response);
+                }
+            }
+
+            if (results.Any())
+            {
+                var orderstatus = results.First();
+                log.LogInformation("cosmos document found: " + orderstatus.ToString());
+                var previousstatus = orderstatus.Status;
+                if (previousstatus != job.Status)
+                {
+                    isNewStatus = true;
+                }
+            }
+
+            // Get the time for the latest status
+            var latestStage = job.Details.JobStages.OrderByDescending(x => x.StageTime).FirstOrDefault().StageTime;
+            log.LogInformation("Latest stage time of the job was: " + latestStage.ToString());
+
+            // Upsert the record
+            var upsertStatus = await container.UpsertItemAsync<OrderStatus>(new OrderStatus() { Id = jobId, Status = job.Status, LastUpdated = latestStage }, new PartitionKey(jobId));
+
+            if (upsertStatus.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                log.LogInformation("Upsert failed: " + upsertStatus.ToString());
+            }
+
+            return isNewStatus;
+        }
+
+        private void HandleCurrentStatus(JobResource job, ILogger log)
+        {
             // Status reference: https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.management.databox.models.jobresource.status?view=azure-dotnet#microsoft-azure-management-databox-models-jobresource-status
             switch (job.Status)
             {
@@ -71,6 +127,7 @@ namespace databox_status
                     break;
                 default:
                     // if any other status then continue
+                    log.LogInformation("Latest status for job: " + job.Id + " is " + job.Status);
                     break;
 
             }
@@ -95,7 +152,7 @@ namespace databox_status
         {
 
             var serviceBusFQDN = System.Environment.GetEnvironmentVariable("ServiceBusFQDN", EnvironmentVariableTarget.Process);
-            var client = new ServiceBusClient(serviceBusFQDN, new DefaultAzureCredential());
+            var client = new ServiceBusClient(serviceBusFQDN, new ManagedIdentityCredential());
             var sender = client.CreateSender(status);
 
             var message = JsonConvert.SerializeObject(new DataBoxStatus { OrderName = ordername, Status = status, ResourceGroup = GetResourceGroup(resourceId) });
@@ -108,25 +165,33 @@ namespace databox_status
             // this could make a call to a Logic App to send email notifications with O365 connector
         }
 
-        private CarDetails ParseCarDetails(string jobName)
-        {
-            // assumes naming convention of YYYYMMDD_CountryCode_CarId_OrderNumber
-            var jobstring = jobName.Split('_');
-            var carDetails = new CarDetails()
-            {
-                CountryCode = jobstring[1],
-                CarId = jobstring[2],
-                OrderNumber = Convert.ToInt32(jobstring[3])
-            };
+        // private CarDetails ParseCarDetails(string jobName)
+        // {
+        //     // assumes naming convention of YYYYMMDD_CountryCode_CarId_OrderNumber
+        //     var jobstring = jobName.Split('_');
+        //     var carDetails = new CarDetails()
+        //     {
+        //         CountryCode = jobstring[1],
+        //         CarId = jobstring[2],
+        //         OrderNumber = Convert.ToInt32(jobstring[3])
+        //     };
 
-            return carDetails;
-        }
+        //     return carDetails;
+        // }
 
-        private class CarDetails
+        // private class CarDetails
+        // {
+        //     public string CarId { get; set; }
+        //     public string CountryCode { get; set; }
+        //     public int OrderNumber { get; set; }
+        // }
+
+        private class OrderStatus
         {
-            public string CarId { get; set; }
-            public string CountryCode { get; set; }
-            public int OrderNumber { get; set; }
+            [Newtonsoft.Json.JsonProperty(PropertyName = "id")]
+            public string Id { get; set; }
+            public string Status { get; set; }
+            public DateTime? LastUpdated { get; set; }
         }
     }
 }
