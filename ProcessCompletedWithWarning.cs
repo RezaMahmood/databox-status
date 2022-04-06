@@ -28,7 +28,7 @@ namespace databox_status
             var accessToken = token.Token;
             using (var databoxClient = new DataBoxManagementClient(new TokenCredentials(accessToken)))
             {
-                var job = await databoxClient.Jobs.GetAsync(message.ResourceGroup, message.OrderName, "true");
+                var job = await databoxClient.Jobs.GetAsync(message.ResourceGroup, message.OrderName, "details");
 
                 // Trigger data ingest based on specific criteria.  For example:
                 // car id: Can be parsed from OrderName

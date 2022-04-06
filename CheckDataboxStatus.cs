@@ -24,7 +24,7 @@ namespace databox_status
         /// <param name="myTimer"></param>
         /// <param name="log"></param>
         [FunctionName("CheckDataboxStatus")]
-        public async Task Run([TimerTrigger("0 */1 * * * *")] TimerInfo myTimer, ILogger log)
+        public async Task Run([TimerTrigger("0 */2 * * * *")] TimerInfo myTimer, ILogger log)
         {
             var subscriptionId = System.Environment.GetEnvironmentVariable("subscriptionid", EnvironmentVariableTarget.Process);
             var credential = new ManagedIdentityCredential();
@@ -40,7 +40,7 @@ namespace databox_status
                 {
                     // JobResource reference: https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.management.databox.models.jobresource?view=azure-dotnet
                     var jobName = job.Name;
-                    
+
                     // Log order details into a database if you wish to create a dashboard
                     // Check whether status is new
                     var isUpdatedStatus = await IsStatusNew(job, log);
