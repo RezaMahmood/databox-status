@@ -137,7 +137,7 @@ namespace databox_status
         {
             // example Id would be: /subscriptions/xxxx/resourcegroups/yyyy/providers/Microsoft.DataBox/jobs/zzzz
             var splitResource = resourceId.Split("/");
-            var resourceGroup = splitResource[3];
+            var resourceGroup = splitResource[4];
 
             return resourceGroup;
         }
