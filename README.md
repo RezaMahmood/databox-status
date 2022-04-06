@@ -13,7 +13,7 @@ Output of this project is to check the status of a Data Box Disk order and trigg
 
 ## Workflow
 
-1. Azure Function with Timer trigger queries ARM for a list of all Data Box statuses for a given subscription
+1. Azure Function with Timer trigger uses .NET Data Box API to query for a list of all Data Box statuses for a given subscription
 2. The latest status of the Data Box order is captured in Cosmos DB
 3. If the status is:
         - Completed
