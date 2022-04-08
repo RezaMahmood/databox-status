@@ -39,7 +39,7 @@ namespace databox_status
                 var job = await databoxClient.Jobs.GetAsync(message.ResourceGroup, message.OrderName, "details");
 
                 // Trigger data ingest based on specific criteria.  For example:
-                // car id: Can be parsed from OrderName
+                // car id: Can be parsed from OrderName or Tags
                 // storage account: 
                 var databoxDiskJobDetails = (DataBoxDiskJobDetails)job.Details;
                 var dataImportDetail = databoxDiskJobDetails.DataImportDetails.First();

@@ -8,5 +8,6 @@ namespace databox_status
         public string OrderName { get; set; }
         public string Status { get; set; }
         public string ResourceGroup { get; set; }
+        public string Stage { get; set; }
     }
 }

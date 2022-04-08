@@ -40,25 +40,40 @@ namespace databox_status
                 {
                     // JobResource reference: https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.management.databox.models.jobresource?view=azure-dotnet
                     var jobName = job.Name;
+                    var resourceGroup = GetResourceGroup(job.Id);
 
-                    // Log order details into a database if you wish to create a dashboard
-                    // Check whether status is new
-                    var isUpdatedStatus = await IsStatusNew(job, log);
+                    var jobItem = await databoxClient.Jobs.GetAsync(resourceGroup, jobName, "details");
+                    var databoxDiskJobDetails = (DataBoxDiskJobDetails)jobItem.Details;
 
-                    // No need to handle the status if this is a brand new order
-                    if (isUpdatedStatus)
+                    var latestJobStage = databoxDiskJobDetails.JobStages.OrderByDescending(x => x.StageTime).FirstOrDefault();
+
+                    if (latestJobStage != null)
                     {
-                        HandleCurrentStatus(job, log);
+                        var jobStage = latestJobStage.StageName;
+                        var jobStatus = latestJobStage.StageStatus;
+                        var jobStageTime = latestJobStage.StageTime;
+
+                        // One approach can be to store job stages into a database for reporting.  The other could be to use Azure Portal to interrogate stage based on Tags
+
+                        // Still need to storage stage/status state somewhere. Check whether status is new
+
+                        var isUpdatedStatus = await IsStatusNew(job.Id, jobStage, jobStatus, jobStageTime, log);
+
+
+                        if (isUpdatedStatus && jobStatus != null && jobStatus != StageStatus.None)
+                        {
+                            HandleCurrentStatus(jobName, job.Id, jobStage, jobStatus, log);
+                        }
+
                     }
 
                     log.LogInformation(JsonConvert.SerializeObject(jobs).ToString());
                 }
             }
 
-            log.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
         }
 
-        private async Task<bool> IsStatusNew(JobResource job, ILogger log)
+        private async Task<bool> IsStatusNew(string jobId, string currentJobStage, StageStatus? currentJobStatus, DateTime? jobStageTime, ILogger log)
         {
             bool isNewStatus = false;
             // get the current status for this order (if it exists)
@@ -70,13 +85,13 @@ namespace databox_status
             var cosmosClient = new CosmosClient(cosmosAccount, new ManagedIdentityCredential());
             var container = cosmosClient.GetContainer(cosmosDatabase, cosmosContainer);
 
-            var jobId = Utils.GetCosmosIdFromJobId(job.Id);
+            var cosmosjobId = Utils.GetCosmosIdFromJobId(jobId);
 
             log.LogInformation("Job id (for cosmos) is: " + jobId);
 
-            var query = new QueryDefinition("SELECT * FROM status s where s.id = @id").WithParameter("@id", jobId);
+            var query = new QueryDefinition("SELECT * FROM status s where s.id = @id").WithParameter("@id", cosmosjobId);
             var results = new List<OrderStatus>();
-            using (var resultsIterator = container.GetItemQueryIterator<OrderStatus>(query, requestOptions: new QueryRequestOptions() { PartitionKey = new PartitionKey(jobId) }))
+            using (var resultsIterator = container.GetItemQueryIterator<OrderStatus>(query, requestOptions: new QueryRequestOptions() { PartitionKey = new PartitionKey(cosmosjobId) }))
             {
                 while (resultsIterator.HasMoreResults)
                 {
@@ -89,19 +104,16 @@ namespace databox_status
             {
                 var orderstatus = results.First();
                 log.LogInformation("cosmos document found: " + orderstatus.ToString());
-                var previousstatus = orderstatus.Status;
-                if (previousstatus != job.Status)
+                var previousStage = orderstatus.Stage;
+                var previousStageStatus = orderstatus.Status;
+                if (previousStage != currentJobStage || previousStageStatus != currentJobStatus.ToString())
                 {
                     isNewStatus = true;
                 }
             }
 
-            // Get the time for the latest status
-            var latestStage = job.Details.JobStages.OrderByDescending(x => x.StageTime).FirstOrDefault().StageTime;
-            log.LogInformation("Latest stage time of the job was: " + latestStage.ToString());
-
             // Upsert the record
-            var upsertStatus = await container.UpsertItemAsync<OrderStatus>(new OrderStatus() { Id = jobId, Status = job.Status, LastUpdated = latestStage }, new PartitionKey(jobId));
+            var upsertStatus = await container.UpsertItemAsync<OrderStatus>(new OrderStatus() { Id = jobId, Status = currentJobStatus.ToString(), LastUpdated = jobStageTime, Stage = currentJobStage }, new PartitionKey(jobId));
 
             if (upsertStatus.StatusCode != System.Net.HttpStatusCode.OK)
             {
@@ -111,25 +123,28 @@ namespace databox_status
             return isNewStatus;
         }
 
-        private void HandleCurrentStatus(JobResource job, ILogger log)
+        private void HandleCurrentStatus(string jobName, string jobId, string jobStage, StageStatus? jobStatus, ILogger log)
         {
             // Status reference: https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.management.databox.models.jobresource.status?view=azure-dotnet#microsoft-azure-management-databox-models-jobresource-status
-            switch (job.Status)
-            {
-                case "Completed":
-                case "CompletedWithErrors":
-                case "CompletedWithWarnings":
-                    HandleCompleted(job.Name, job.Status, job.Id);
-                    break;
-                case "Failed_IssueReportedAtCustomer":
-                case "Failed_IssueDetectedAtAzureDC":
-                    NotifyFailed(job);
-                    break;
-                default:
-                    // if any other status then continue
-                    log.LogInformation("Latest status for job: " + job.Id + " is " + job.Status);
-                    break;
 
+            // Can handle different stages - for this example we are handling DataCopy
+            if (jobStage == "DataCopy")
+            {
+                switch (jobStatus)
+                {
+                    case StageStatus.Succeeded:
+                    case StageStatus.SucceededWithErrors:
+                    case StageStatus.SucceededWithWarnings:
+                        HandleCompleted(jobName, jobStage, jobStatus, jobId);
+                        break;
+                    case StageStatus.Cancelled:
+                    case StageStatus.Failed:
+                        NotifyFailed(jobName, jobStage, jobStatus, jobId);
+                        break;
+                    default:
+                        log.LogInformation("Latest job: " + jobId + "  stage is: " + jobStage + " status is: " + jobStatus);
+                        break;
+                }
             }
         }
 
@@ -148,19 +163,19 @@ namespace databox_status
         /// <param name="ordername"></param>
         /// <param name="status"></param>
         /// <param name="resourceId">Needed to get ResourceGroup of databox order to get order details like error details</param>
-        private async void HandleCompleted(string ordername, string status, string resourceId)
+        private async void HandleCompleted(string ordername, string stage, StageStatus? status, string resourceId)
         {
 
             var serviceBusFQDN = System.Environment.GetEnvironmentVariable("ServiceBusFQDN", EnvironmentVariableTarget.Process);
             var client = new ServiceBusClient(serviceBusFQDN, new ManagedIdentityCredential());
-            var sender = client.CreateSender(status);
+            var sender = client.CreateSender(status.ToString());
 
-            var message = JsonConvert.SerializeObject(new DataBoxStatus { OrderName = ordername, Status = status, ResourceGroup = GetResourceGroup(resourceId) });
+            var message = JsonConvert.SerializeObject(new DataBoxStatus { OrderName = ordername, Stage = stage, Status = status.ToString(), ResourceGroup = GetResourceGroup(resourceId) });
 
             await sender.SendMessageAsync(new ServiceBusMessage(message));
         }
 
-        private void NotifyFailed(JobResource job)
+        private void NotifyFailed(string jobName, string jobStage, StageStatus? jobStatus, string jobId)
         {
             // this could make a call to a Logic App to send email notifications with O365 connector
         }
@@ -190,6 +205,7 @@ namespace databox_status
         {
             [Newtonsoft.Json.JsonProperty(PropertyName = "id")]
             public string Id { get; set; }
+            public string Stage { get; set; }
             public string Status { get; set; }
             public DateTime? LastUpdated { get; set; }
         }

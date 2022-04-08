@@ -1,0 +1,169 @@
+{
+    "preferredDisks": null,
+    "copyProgress": [
+        {
+            "serialNumber": "ABCDEFG",
+            "bytesCopied": 1729304390889,
+            "percentComplete": 100,
+            "status": "Failed"
+        }
+    ],
+    "disksAndSizeDetails": {
+        "184020D9564D": 8
+    },
+    "passkey": null,
+    "jobStages": [
+        {
+            "stageName": "DeviceOrdered",
+            "displayName": "Ordered",
+            "stageStatus": "Succeeded",
+            "stageTime": "2022-03-18T07:45:29.3996051Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "DevicePrepared",
+            "displayName": "Processed",
+            "stageStatus": "Succeeded",
+            "stageTime": "2022-03-22T02:54:25.0403128Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "Dispatched",
+            "displayName": "Dispatched",
+            "stageStatus": "Succeeded",
+            "stageTime": "2022-03-22T00:00:00Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "Delivered",
+            "displayName": "Delivered",
+            "stageStatus": "Succeeded",
+            "stageTime": "2022-03-24T10:16:33.1469789Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "PickedUp",
+            "displayName": "Picked up",
+            "stageStatus": "Succeeded",
+            "stageTime": "2022-04-01T15:37:00Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "AtAzureDC",
+            "displayName": "Received",
+            "stageStatus": "Succeeded",
+            "stageTime": "2022-04-04T09:34:00Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "DataCopy",
+            "displayName": "Data copy in progress",
+            "stageStatus": "InProgress",
+            "stageTime": "2022-04-05T08:02:21.5360269Z",
+            "jobStageDetails": null
+        },
+        {
+            "stageName": "Completed",
+            "displayName": "Completed",
+            "stageStatus": "None",
+            "stageTime": null,
+            "jobStageDetails": null
+        }
+    ],
+    "contactDetails": {
+        "contactName": "",
+        "phone": "",
+        "phoneExtension": "",
+        "mobile": "",
+        "emailList": [
+            ""
+        ],
+        "notificationPreference": [
+            {
+                "stageName": "DevicePrepared",
+                "sendNotification": true
+            },
+            {
+                "stageName": "Dispatched",
+                "sendNotification": true
+            },
+            {
+                "stageName": "Delivered",
+                "sendNotification": true
+            },
+            {
+                "stageName": "PickedUp",
+                "sendNotification": true
+            },
+            {
+                "stageName": "AtAzureDC",
+                "sendNotification": true
+            },
+            {
+                "stageName": "DataCopy",
+                "sendNotification": true
+            }
+        ]
+    },
+    "shippingAddress": {
+        "streetAddress1": "",
+        "streetAddress2": "",
+        "streetAddress3": "",
+        "city": "",
+        "stateOrProvince": "",
+        "country": "",
+        "postalCode": "",
+        "zipExtendedCode": null,
+        "companyName": "",
+        "addressType": "None"
+    },
+    "deliveryPackage": {
+        "trackingUrl": "https://www.singpost.com/track-items",
+        "carrierName": "Other",
+        "trackingId": ""
+    },
+    "returnPackage": {
+        "trackingUrl": "https://www.singpost.com/track-items",
+        "carrierName": "Other",
+        "trackingId": ""
+    },
+    "dataImportDetails": [
+        {
+            "accountDetails": {
+                "storageAccountId": "/subscriptions/xxxx/resourceGroups/yyyy/providers/Microsoft.Storage/storageAccounts/zzzz",
+                "sharePassword": null
+            },
+            "logCollectionLevel": null
+        }
+    ],
+    "dataExportDetails": [],
+    "preferences": {
+        "preferredDataCenterRegion": null,
+        "transportPreferences": {
+            "preferredShipmentType": "MicrosoftManaged"
+        },
+        "encryptionPreferences": {
+            "doubleEncryption": "Disabled"
+        }
+    },
+    "copyLogDetails": [
+        {
+            "diskSerialNumber": "ABCDEFG",
+            "errorLogLink": "databoxlogs-databox/waies/ri-databox-93446dfce1dda0eb_ABCDEFG_20220405-061724-303_error.xml",
+            "verboseLogLink": "databoxlogs-databox/waies/ri-databox-93446dfce1dda0eb_ABCDEFG_20220405-061723-989_verbose.xml"
+        }
+    ],
+    "reverseShipmentLabelSasKey": "",
+    "chainOfCustodySasKey": null,
+    "keyEncryptionKey": {
+        "kekType": "MicrosoftManaged",
+        "identityProperties": null,
+        "kekUrl": null,
+        "kekVaultResourceID": null
+    },
+    "expectedDataSizeInTeraBytes": 1,
+    "actions": [],
+    "lastMitigationActionOnJob": null,
+    "datacenterAddress": null,
+    "dataCenterCode": null
+}
